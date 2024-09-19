@@ -157,11 +157,7 @@ func saveLatest(modification *Modification) error {
 	}
 	defer create.Close()
 	_, err = create.Write(jsonString)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 func fetchModification() (*Modification, error) {
@@ -176,11 +172,7 @@ func fetchModification() (*Modification, error) {
 	}
 	var modification Modification
 	err = json.Unmarshal(body, &modification)
-	if err != nil {
-		return nil, err
-	}
-
-	return &modification, nil
+	return &modification, err
 }
 
 func getConfig() (Config, error) {
@@ -222,9 +214,5 @@ func saveConfig(config Config) error {
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	err = encoder.Encode(config)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
