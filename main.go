@@ -4,80 +4,83 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"reflect"
 )
 
-type Config struct {
-	Modification string `json:"modification"`
-	WebhookUrl   string `json:"webhookUrl"`
-}
+type (
+	Config struct {
+		Modification string `json:"modification"`
+		WebhookUrl   string `json:"webhookUrl"`
+	}
 
-type Modification struct {
-	Id               int    `json:"id"`
-	Namespace        string `json:"namespace"`
-	Name             string `json:"name"`
-	Featured         bool   `json:"featured"`
-	Verified         bool   `json:"verified"`
-	Organization     int    `json:"organization"`
-	Author           string `json:"author"`
-	Downloads        int    `json:"downloads"`
-	DownloadString   string `json:"download_string"`
-	ShortDescription string `json:"short_description"`
-	Rating           struct {
-		Count  int     `json:"count"`
-		Rating float64 `json:"rating"`
-	} `json:"rating"`
-	Changelog            string        `json:"changelog"`
-	RequiredLabymodBuild int           `json:"required_labymod_build"`
-	Releases             int           `json:"releases"`
-	LastUpdate           int           `json:"last_update"`
-	Licence              string        `json:"licence"`
-	VersionString        string        `json:"version_string"`
-	Meta                 []string      `json:"meta"`
-	Dependencies         []interface{} `json:"dependencies"`
-	Permissions          []string      `json:"permissions"`
-	SourceUrl            string        `json:"source_url"`
-	BrandImages          []struct {
+	Modification struct {
+		Id                   int          `json:"id"`
+		Namespace            string       `json:"namespace"`
+		Name                 string       `json:"name"`
+		Featured             bool         `json:"featured"`
+		Verified             bool         `json:"verified"`
+		Organization         int          `json:"organization"`
+		Author               string       `json:"author"`
+		Downloads            int          `json:"downloads"`
+		DownloadString       string       `json:"download_string"`
+		ShortDescription     string       `json:"short_description"`
+		Rating               Rating       `json:"rating"`
+		Changelog            string       `json:"changelog"`
+		RequiredLabymodBuild int          `json:"required_labymod_build"`
+		Releases             int          `json:"releases"`
+		LastUpdate           int          `json:"last_update"`
+		Licence              string       `json:"licence"`
+		VersionString        string       `json:"version_string"`
+		Meta                 []string     `json:"meta"`
+		Dependencies         []any        `json:"dependencies"`
+		Permissions          []string     `json:"permissions"`
+		SourceUrl            string       `json:"source_url"`
+		BrandImages          []BrandImage `json:"brand_images"`
+		Tags                 []int        `json:"tags"`
+	}
+
+	BrandImage struct {
 		Type string `json:"type"`
 		Hash string `json:"hash"`
-	} `json:"brand_images"`
-	Tags []int `json:"tags"`
-}
+	}
+
+	Rating struct {
+		Count  int     `json:"count"`
+		Rating float64 `json:"rating"`
+	}
+)
 
 var (
 	config Config
 )
 
 func main() {
-	c, err := getConfig()
+	log.SetPrefix("")
+	log.SetFlags(0)
+	var err error
+	config, err := getConfig()
 	if err != nil {
-		fmt.Println("Error getting config:", err)
-		os.Exit(2)
-		return
-	}
-	config = c
-
-	if config.Modification == "" {
-		fmt.Println("Please enter a modification")
-		os.Exit(2)
-		return
-	}
-	if config.WebhookUrl == "" {
-		fmt.Println("Please enter a webhook url")
-		os.Exit(2)
+		log.Fatalln("Error loading config:", err)
 		return
 	}
 
-	m, err := fetchModification()
+	if len(config.Modification) < 1 {
+		log.Fatalln("Please enter a modification")
+		return
+	}
+	if len(config.WebhookUrl) < 1 {
+		log.Fatalln("Please enter a webhook url")
+		return
+	}
+
+	modification, err := fetchModification()
 	if err != nil {
-		fmt.Println("Error fetching modification:", err)
-		os.Exit(2)
+		log.Fatalln("Error fetching modification:", err)
 		return
 	}
-
-	modification := m
 
 	latest, err := getLatest()
 	if err != nil {
@@ -92,8 +95,8 @@ func main() {
 	}
 }
 
-func checkDifferent(modification Modification, latest Modification) {
-	modificationValue := reflect.ValueOf(modification)
+func checkDifferent(modification *Modification, latest Modification) {
+	modificationValue := reflect.ValueOf(*modification)
 	latestValue := reflect.ValueOf(latest)
 
 	modificationType := modificationValue.Type()
@@ -113,26 +116,19 @@ func checkDifferent(modification Modification, latest Modification) {
 			embed := Embed{
 				Author:      author,
 				Title:       "Change: " + field.Name,
-				Url:         "",
 				Description: fmt.Sprintf("%v\n->\n%v", latestField.Interface(), newField.Interface()),
 				Color:       6689010,
-				Fields:      Field{},
-				Thumbnail:   Thumbnail{},
-				Image:       Image{},
-				Footer:      Footer{},
 			}
 
 			webhook := Webhook{
 				Username:  "FlintMC Modification Tracker",
 				AvatarUrl: "https://avatars.githubusercontent.com/u/76062092",
-				Content:   "",
 				Embeds:    []Embed{embed},
 			}
 
 			err := sendWebhook(config.WebhookUrl, webhook)
 			if err != nil {
-				fmt.Println("Error sending webhook:", err)
-				os.Exit(2)
+				log.Fatalln("Error sending webhook:", err)
 				return
 			}
 		}
@@ -150,9 +146,9 @@ func getLatest() (Modification, error) {
 	return modification, nil
 }
 
-func saveLatest(modification Modification) error {
+func saveLatest(modification *Modification) error {
 
-	jsonString, err := json.MarshalIndent(modification, "", "  ")
+	jsonString, err := json.MarshalIndent(*modification, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -169,25 +165,23 @@ func saveLatest(modification Modification) error {
 	return nil
 }
 
-func fetchModification() (Modification, error) {
-	url := fmt.Sprintf("https://flintmc.net/api/client-store/get-modification/%s", config.Modification)
-
-	resp, err := http.Get(url)
+func fetchModification() (*Modification, error) {
+	resp, err := http.Get(fmt.Sprintf("https://flintmc.net/api/client-store/get-modification/%s", config.Modification))
 	if err != nil {
-		return Modification{}, err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return Modification{}, err
+		return nil, err
 	}
 	var modification Modification
 	err = json.Unmarshal(body, &modification)
 	if err != nil {
-		return Modification{}, err
+		return nil, err
 	}
 
-	return modification, nil
+	return &modification, nil
 }
 
 func getConfig() (Config, error) {
@@ -211,9 +205,7 @@ func getConfig() (Config, error) {
 	}
 	defer file.Close()
 
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&config)
-	if err != nil {
+	if err = json.NewDecoder(file).Decode(&config); err != nil {
 		return config, fmt.Errorf("failed to decode config file: %v", err)
 	}
 
