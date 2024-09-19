@@ -137,13 +137,12 @@ func checkDifferent(modification *Modification, latest Modification) {
 
 func getLatest() (Modification, error) {
 	var modification Modification
-	file, _ := os.Open("latest.json")
-	decoder := json.NewDecoder(file)
-	err := decoder.Decode(&modification)
+	file, err := os.Open("latest.json")
 	if err != nil {
 		return modification, err
 	}
-	return modification, nil
+	err = json.NewDecoder(file).Decode(&modification)
+	return modification, err
 }
 
 func saveLatest(modification *Modification) error {
